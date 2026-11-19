@@ -1,5 +1,6 @@
 package br.ufrn.dimap;
 
+import br.ufrn.dimap.configuration.sources.EnvConfigurationSource;
 import br.ufrn.dimap.configuration.sources.JsonConfigurationSource;
 import br.ufrn.dimap.hosting.AlienAppBuilder;
 import br.ufrn.dimap.service_discovery.hosting.ServiceDiscoveryClientModule;
@@ -20,6 +21,7 @@ public class Main {
         if (configPath != null && Files.exists(configPath)) {
             appBuilder.addConfigurationSource(new JsonConfigurationSource(configPath.toString()));
         }
+        appBuilder.addConfigurationSource(new EnvConfigurationSource());
 
         appBuilder.addModule(new ServiceDiscoveryClientModule(UdpDiscoveryProtocol.class));
         appBuilder.getServices().registerEternal(IInvestmentService.class, InvestmentService.class);
