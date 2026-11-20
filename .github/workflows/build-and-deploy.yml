@@ -19,18 +19,18 @@ jobs:
 
     steps:
       - name: Checkout alien-apps
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           path: alien-apps
 
       - name: Checkout alien-framework
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
         with:
           repository: PedroLucas63/alien-framework
           path: alien-framework
 
       - name: Setup Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6.3.0
         with:
           distribution: temurin
           java-version: '21'
@@ -53,7 +53,7 @@ jobs:
           done
 
       - name: Upload Fat JARs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: alien-jars
           path: dist/*.jar
@@ -65,13 +65,13 @@ jobs:
 
     steps:
       - name: Download Fat JARs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.2
         with:
           name: alien-jars
           path: jars
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.3.0
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
