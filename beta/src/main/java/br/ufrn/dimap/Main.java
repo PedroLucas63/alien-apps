@@ -8,8 +8,9 @@ import br.ufrn.dimap.service_discovery.transport.UdpDiscoveryProtocol;
 import br.ufrn.dimap.services.IInvestmentService;
 import br.ufrn.dimap.services.InvestmentService;
 
-import java.net.URISyntaxException;
-import java.net.URL;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -17,10 +18,7 @@ public class Main {
     public static void main(String[] args) {
         var appBuilder = new AlienAppBuilder();
 
-        Path configPath = resolveConfigPath();
-        if (configPath != null && Files.exists(configPath)) {
-            appBuilder.addConfigurationSource(new JsonConfigurationSource(configPath.toString()));
-        }
+        loadConfiguration(appBuilder);
         appBuilder.addConfigurationSource(new EnvConfigurationSource());
 
         appBuilder.addModule(new ServiceDiscoveryClientModule(UdpDiscoveryProtocol.class));
@@ -35,19 +33,18 @@ public class Main {
         app.start();
     }
 
-    private static Path resolveConfigPath() {
+    private static void loadConfiguration(AlienAppBuilder appBuilder) {
         Path localPath = Path.of(System.getProperty("user.dir"), "appsettings.json");
         if (Files.exists(localPath)) {
-            return localPath;
+            appBuilder.addConfigurationSource(new JsonConfigurationSource(localPath.toString()));
+            return;
         }
-        URL resource = Main.class.getClassLoader().getResource("appsettings.json");
-        if (resource == null || !"file".equalsIgnoreCase(resource.getProtocol())) {
-            return null;
-        }
-        try {
-            return Path.of(resource.toURI());
-        } catch (URISyntaxException e) {
-            return null;
+        try (InputStream stream = Main.class.getClassLoader().getResourceAsStream("appsettings.json")) {
+            if (stream != null) {
+                appBuilder.addConfigurationSource(new JsonConfigurationSource(stream));
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 }
