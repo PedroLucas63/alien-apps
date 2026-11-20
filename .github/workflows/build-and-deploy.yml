@@ -1,0 +1,117 @@
+name: Build and Deploy Alien Apps
+
+on:
+  push:
+    branches:
+      - main
+  repository_dispatch:
+    types:
+      - framework-updated
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-aws
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout alien-apps
+        uses: actions/checkout@v4
+        with:
+          path: alien-apps
+
+      - name: Checkout alien-framework
+        uses: actions/checkout@v4
+        with:
+          repository: PedroLucas63/alien-framework
+          path: alien-framework
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: |
+            alien-framework/**/pom.xml
+            alien-apps/**/pom.xml
+
+      - name: Install alien-framework
+        run: mvn -B -f alien-framework/pom.xml install -DskipTests
+
+      - name: Package alien-apps Fat JARs
+        run: mvn -B -f alien-apps/pom.xml package -DskipTests
+
+      - name: Collect Fat JARs
+        run: |
+          mkdir -p dist
+          for app in service-discovery api-gateway alpha beta; do
+            cp "alien-apps/$app/target/$app-1.0-SNAPSHOT.jar" "dist/$app-1.0-SNAPSHOT.jar"
+          done
+
+      - name: Upload Fat JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: alien-jars
+          path: dist/*.jar
+          retention-days: 1
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Fat JARs
+        uses: actions/download-artifact@v4
+        with:
+          name: alien-jars
+          path: jars
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/alien-java-key
+          chmod 600 ~/.ssh/alien-java-key
+
+      - name: Deploy JARs to EC2 instances
+        run: |
+          deploy_app() {
+            local app="$1"
+            local jar="jars/${app}-1.0-SNAPSHOT.jar"
+            local ips
+
+            ips=$(aws ec2 describe-instances \
+              --filters "Name=tag:Project,Values=AlienJava" "Name=tag:AlienApp,Values=${app}" "Name=instance-state-name,Values=running" \
+              --query "Reservations[].Instances[].PublicIpAddress" \
+              --output text)
+
+            if [[ -z "$ips" ]]; then
+              echo "::warning::Nenhuma instância running encontrada para AlienApp=${app}"
+              return 0
+            fi
+
+            for ip in $ips; do
+              echo "Atualizando ${app} em ${ip}..."
+              scp -i ~/.ssh/alien-java-key -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+                "$jar" "ec2-user@${ip}:/opt/alien/app.jar.new"
+              ssh -i ~/.ssh/alien-java-key -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+                "ec2-user@${ip}" "mv /opt/alien/app.jar.new /opt/alien/app.jar && sudo systemctl restart alien-app"
+              echo "  [OK] ${app} reiniciado em ${ip}"
+            done
+          }
+
+          deploy_app "service-discovery"
+          sleep 3
+          deploy_app "alpha"
+          deploy_app "beta"
+          deploy_app "api-gateway"
