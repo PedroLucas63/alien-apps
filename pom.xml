@@ -13,6 +13,7 @@
         <module>beta</module>
         <module>service-discovery</module>
         <module>api-gateway</module>
+        <module>alpha-dataset</module>
     </modules>
 
     <properties>
